@@ -35,8 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const isSandbox = process.env.IPAYMU_IS_SANDBOX !== 'false'; // defaults to true (Sandbox)
 
     // Fallback sandbox credentials for local development if not configured yet
-    const activeVa = va || '0000002410313837'; // default test merchant VA
-    const activeApiKey = apiKey || 'SANDBOX913F1F10-67B4-4B7C-A5D8-3DB5E86E2024'; // default test merchant API Key
+    const activeVa = va || '0000002185504003';
+    const activeApiKey = apiKey || 'SANDBOX1776E990-0C70-478B-8DDB-E7701953AD6E';
 
     const host = isSandbox ? 'https://sandbox.ipaymu.com' : 'https://my.ipaymu.com';
     const url = `${host}/api/v2/payment`;

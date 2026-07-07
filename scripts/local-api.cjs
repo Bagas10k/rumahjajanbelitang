@@ -48,8 +48,8 @@ const server = http.createServer(async (req, res) => {
         const apiKey = process.env.IPAYMU_API_KEY || '';
         const isSandbox = process.env.IPAYMU_IS_SANDBOX !== 'false';
 
-        const activeVa = va || '0000002410313837';
-        const activeApiKey = apiKey || 'SANDBOX913F1F10-67B4-4B7C-A5D8-3DB5E86E2024';
+        const activeVa = va || '0000002185504003';
+        const activeApiKey = apiKey || 'SANDBOX1776E990-0C70-478B-8DDB-E7701953AD6E';
 
         const host = isSandbox ? 'https://sandbox.ipaymu.com' : 'https://my.ipaymu.com';
         const url = `${host}/api/v2/payment`;
