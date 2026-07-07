@@ -96,6 +96,8 @@ interface CartState {
   
   // Admin Product Actions
   addProduct: (product: Product) => void;
+  deleteProduct: (productId: string) => void;
+  updateProduct: (productId: string, updatedFields: Partial<Product>) => void;
   toggleFeatured: (productId: string) => void;
   updateVariantStock: (productId: string, variantId: string, stock: number) => void;
 }
@@ -285,6 +287,20 @@ export const useCartStore = create<CartState>()(
   addProduct: (product: Product) => {
     set({
       products: [product, ...get().products],
+    });
+  },
+
+  deleteProduct: (productId: string) => {
+    set({
+      products: get().products.filter((p) => p.id !== productId),
+    });
+  },
+
+  updateProduct: (productId: string, updatedFields: Partial<Product>) => {
+    set({
+      products: get().products.map((p) =>
+        p.id === productId ? { ...p, ...updatedFields } : p
+      ),
     });
   },
 
