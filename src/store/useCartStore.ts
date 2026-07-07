@@ -95,7 +95,7 @@ interface CartState {
   fetchOrders: () => Promise<void>;
 
   // Order Actions
-  placeOrder: (customer: CustomerDetails, paymentMethod: 'qris' | 'cod') => Promise<Order | null>;
+  placeOrder: (customer: CustomerDetails, paymentMethod: 'qris' | 'cod', customUniqueCode?: number) => Promise<Order | null>;
   updateOrderStatus: (orderId: string, status: 'pending' | 'paid' | 'failed') => Promise<void>;
   updateDeliveryStatus: (orderId: string, status: 'packing' | 'shipping' | 'completed') => Promise<void>;
   
@@ -273,12 +273,14 @@ export const useCartStore = create<CartState>()(
       },
 
       // Order Actions
-      placeOrder: async (customer: CustomerDetails, paymentMethod: 'qris' | 'cod') => {
+      placeOrder: async (customer: CustomerDetails, paymentMethod: 'qris' | 'cod', customUniqueCode?: number) => {
         const cartItems = get().items;
         if (cartItems.length === 0) return null;
 
         const subtotal = get().getCartTotal();
-        const uniqueCode = paymentMethod === 'qris' ? Math.floor(Math.random() * 999) + 1 : 0;
+        const uniqueCode = customUniqueCode !== undefined 
+          ? customUniqueCode 
+          : (paymentMethod === 'qris' ? Math.floor(Math.random() * 999) + 1 : 0);
         const total = subtotal + uniqueCode;
         
         const newOrder: Order = {

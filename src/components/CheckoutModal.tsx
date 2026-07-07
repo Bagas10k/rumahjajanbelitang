@@ -9,7 +9,7 @@ export interface CheckoutModalProps {
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose }) => {
-  const { items, getCartTotal, placeOrder } = useCartStore();
+  const { getCartTotal, placeOrder } = useCartStore();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -21,9 +21,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Generate a random 3-digit unique transfer code once per checkout session
+  const [uniqueCode] = useState(() => Math.floor(Math.random() * 999) + 1);
+
   if (!isOpen) return null;
 
-  const totalAmount = getCartTotal();
+  const subtotal = getCartTotal();
+  // Adjust total payment for QRIS manually using the unique code
+  const totalAmount = paymentMethod === 'qris' ? subtotal + uniqueCode : subtotal;
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,78 +42,37 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const handleConfirmCheckout = async () => {
     setIsProcessing(true);
 
-    if (paymentMethod === 'qris') {
-      // ONLINE PAYMENT VIA IPAYMU GATEWAY API
-      try {
-        const response = await fetch('/api/payment', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name,
-            phone,
-            email: email || 'customer@email.com',
-            amount: totalAmount,
-            items: items,
-          }),
-        });
+    try {
+      const customer: CustomerDetails = {
+        name,
+        email: email || 'customer@email.com',
+        phone,
+        address,
+      };
 
-        const data = await response.json();
-        setIsProcessing(false);
-
-        if (data.success && data.paymentUrl) {
-          const customer: CustomerDetails = {
-            name,
-            email: email || 'customer@email.com',
-            phone,
-            address,
-          };
-
-          // Register order locally in store
-          await placeOrder(customer, 'qris');
-          
-          alert(`Transaksi iPaymu Terbuat!\n\nAnda akan dialihkan ke halaman pembayaran iPaymu Sandbox.\n\nKlik OK untuk melanjutkan.`);
-          
-          // Redirect browser to iPaymu payment page
-          window.location.href = data.paymentUrl;
-        } else {
-          alert(`Gagal membuat sesi pembayaran iPaymu: ${data.message || 'Unknown error'}`);
-        }
-      } catch (error: any) {
-        setIsProcessing(false);
-        console.error('iPaymu Checkout Error:', error);
-        alert(`Terjadi kesalahan jaringan: ${error.message || 'Unknown Error'}`);
+      // Place order and sync directly with Supabase
+      // Pass the generated uniqueCode if QRIS, otherwise 0
+      const activeUniqueCode = paymentMethod === 'qris' ? uniqueCode : 0;
+      const order = await placeOrder(customer, paymentMethod, activeUniqueCode);
+      
+      setIsProcessing(false);
+      
+      if (order) {
+        setCreatedOrder(order);
+        setStep('success');
+      } else {
+        alert('Gagal membuat pesanan. Keranjang belanja Anda kosong.');
       }
-    } else {
-      // CASH ON DELIVERY (COD)
-      try {
-        const customer: CustomerDetails = {
-          name,
-          email: email || 'customer@email.com',
-          phone,
-          address,
-        };
-
-        const order = await placeOrder(customer, 'cod');
-        setIsProcessing(false);
-        
-        if (order) {
-          setCreatedOrder(order);
-          setStep('success');
-        } else {
-          alert('Gagal membuat pesanan. Keranjang Anda kosong.');
-        }
-      } catch (err) {
-        setIsProcessing(false);
-        alert('Gagal memproses pesanan COD.');
-      }
+    } catch (err: any) {
+      setIsProcessing(false);
+      console.error('Checkout Error:', err);
+      alert(`Terjadi kesalahan saat memproses pesanan: ${err.message || 'Unknown Error'}`);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden max-h-[90vh] animate-fade-in">
         
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-[#faf9f6]">
@@ -184,7 +148,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               </h3>
               
               <div className="grid grid-cols-2 gap-4">
-                {/* iPaymu Online Payment Selector */}
+                {/* QRIS Selector */}
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('qris')}
@@ -195,8 +159,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   }`}
                 >
                   <Wallet className={`w-6 h-6 ${paymentMethod === 'qris' ? 'text-[#e28743]' : 'text-gray-400'}`} />
-                  <span className="text-sm font-bold text-[#2d2218]">Bayar Online</span>
-                  <span className="text-[10px] text-gray-400 text-center">iPaymu (QRIS, VA, E-Wallet)</span>
+                  <span className="text-sm font-bold text-[#2d2218]">Scan QRIS</span>
+                  <span className="text-[10px] text-gray-400 text-center">Transfer Otomatis / Manual</span>
                 </button>
 
                 {/* COD Selector */}
@@ -218,7 +182,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               <div className="border-t border-gray-100 pt-5 flex justify-between items-center mt-6">
                 <div>
                   <span className="text-xs text-gray-400 block font-medium">Total Pembayaran</span>
-                  <span className="text-lg font-black text-[#7b2cbf]">Rp {totalAmount.toLocaleString()}</span>
+                  <span className="text-lg font-black text-[#7b2cbf]">
+                    Rp {subtotal.toLocaleString()}
+                  </span>
                 </div>
                 <button
                   type="submit"
@@ -234,28 +200,35 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           {step === 'payment_detail' && (
             <div className="text-center space-y-6">
               {paymentMethod === 'qris' ? (
-                <div className="space-y-6 max-w-sm mx-auto py-4">
-                  <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center text-[#e28743] mx-auto">
-                    <Wallet className="w-8 h-8" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-black text-[#2d2218]">Konfirmasi Pembayaran Online</h3>
-                    <p className="text-xs text-gray-500">
-                      Anda akan dialihkan ke gerbang pembayaran aman **iPaymu** untuk menyelesaikan transaksi menggunakan QRIS, e-wallet, Virtual Account, atau gerai retail.
+                <div className="space-y-4 max-w-sm mx-auto py-2">
+                  <div className="space-y-1">
+                    <h3 className="text-md font-black text-[#2d2218]">Scan QRIS Toko Bagas</h3>
+                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
+                      Silakan scan QRIS di bawah ini. Harap transfer **TEPAT** sejumlah nominal total agar pembayaran terverifikasi otomatis.
                     </p>
                   </div>
-                  <div className="bg-[#faf9f6] p-4 rounded-2xl border border-gray-100 text-left space-y-2 text-xs">
+
+                  {/* Render Static User QRIS Image */}
+                  <div className="bg-white p-3 rounded-2xl border border-gray-150 shadow-md max-w-[260px] mx-auto overflow-hidden">
+                    <img 
+                      src="/qris_bagas.jpg" 
+                      alt="QRIS Toko Bagas" 
+                      className="w-full h-auto object-contain rounded-lg"
+                    />
+                  </div>
+
+                  <div className="bg-[#faf9f6] p-4 rounded-2xl border border-gray-100 text-left space-y-2 text-xs font-semibold">
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-medium">Nama Pembeli:</span>
-                      <span className="font-bold text-gray-700">{name}</span>
+                      <span className="text-gray-500 font-medium">Subtotal Belanja:</span>
+                      <span className="text-gray-700">Rp {subtotal.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500 font-medium">No. Telepon:</span>
-                      <span className="font-bold text-gray-700">{phone}</span>
+                    <div className="flex justify-between text-orange-600">
+                      <span className="font-medium">Kode Unik Transfer:</span>
+                      <span>+ Rp {uniqueCode}</span>
                     </div>
-                    <div className="flex justify-between border-t border-gray-200/60 pt-2">
-                      <span className="text-gray-500 font-medium">Total Tagihan:</span>
-                      <span className="font-extrabold text-[#7b2cbf] text-sm">Rp {totalAmount.toLocaleString()}</span>
+                    <div className="flex justify-between border-t border-gray-200/60 pt-2 text-[#7b2cbf]">
+                      <span className="font-bold">Total Wajib Bayar:</span>
+                      <span className="font-black text-sm">Rp {totalAmount.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -306,7 +279,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                       Memproses...
                     </>
                   ) : paymentMethod === 'qris' ? (
-                    'Bayar Sekarang'
+                    'Konfirmasi Pesanan'
                   ) : (
                     'Konfirmasi Pesanan'
                   )}
@@ -315,7 +288,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* STEP 3: Successful Order Display (Only triggered by COD orders now, as Online Payment redirects browser) */}
+          {/* STEP 3: Successful Order Display */}
           {step === 'success' && createdOrder && (
             <div className="text-center space-y-6 py-6 max-w-sm mx-auto">
               <div className="w-16 h-16 bg-[#e8f5e9] text-[#2e7d32] rounded-full flex items-center justify-center mx-auto shadow-xs">
@@ -336,7 +309,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-medium">Metode Bayar:</span>
-                  <span className="font-bold text-gray-700 uppercase">{createdOrder.paymentMethod}</span>
+                  <span className="font-bold text-gray-700 uppercase">
+                    {createdOrder.paymentMethod === 'qris' ? 'QRIS / SCAN' : 'COD'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-medium">Status Bayar:</span>
@@ -345,19 +320,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   </span>
                 </div>
                 <div className="flex justify-between border-t border-gray-200/60 pt-2">
-                  <span className="text-gray-500 font-medium">Total Pembayaran:</span>
+                  <span className="text-gray-500 font-medium">Total Wajib Bayar:</span>
                   <span className="font-extrabold text-[#2d2218] text-sm">Rp {createdOrder.totalAmount.toLocaleString()}</span>
                 </div>
               </div>
 
-              <p className="text-[11px] text-gray-400 leading-relaxed">
-                Siapkan dana tunai sebesar nominal di atas untuk diserahkan ke kurir saat paket tiba ke alamat Anda.
+              <p className="text-[11px] text-gray-400 leading-relaxed font-semibold">
+                {createdOrder.paymentMethod === 'qris'
+                  ? 'Pembayaran akan diverifikasi otomatis oleh mutasi sistem bank kami. Simpan bukti transfer Anda.'
+                  : 'Siapkan dana tunai sebesar nominal di atas untuk diserahkan ke kurir saat paket tiba.'}
               </p>
 
               <button
                 onClick={() => {
                   onClose();
-                  // Reset modal states
                   setStep('form');
                   setName('');
                   setPhone('');
