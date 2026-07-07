@@ -43,6 +43,7 @@ export interface Order {
   paymentMethod: 'qris' | 'cod';
   deliveryStatus: 'packing' | 'shipping' | 'completed';
   createdAt: string;
+  uniqueCode?: number;
 }
 
 export interface User {

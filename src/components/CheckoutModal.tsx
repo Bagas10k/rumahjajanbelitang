@@ -66,7 +66,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           };
 
           // Register order locally in store
-          placeOrder(customer, 'qris');
+          await placeOrder(customer, 'qris');
           
           alert(`Transaksi iPaymu Terbuat!\n\nAnda akan dialihkan ke halaman pembayaran iPaymu Sandbox.\n\nKlik OK untuk melanjutkan.`);
           
@@ -82,7 +82,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       }
     } else {
       // CASH ON DELIVERY (COD)
-      setTimeout(() => {
+      try {
         const customer: CustomerDetails = {
           name,
           email: email || 'customer@email.com',
@@ -90,7 +90,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           address,
         };
 
-        const order = placeOrder(customer, 'cod');
+        const order = await placeOrder(customer, 'cod');
         setIsProcessing(false);
         
         if (order) {
@@ -99,7 +99,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
         } else {
           alert('Gagal membuat pesanan. Keranjang Anda kosong.');
         }
-      }, 1200);
+      } catch (err) {
+        setIsProcessing(false);
+        alert('Gagal memproses pesanan COD.');
+      }
     }
   };
 

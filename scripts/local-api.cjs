@@ -123,6 +123,70 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ success: false, message: err.message }));
       }
     });
+  } else if (req.method === 'POST' && req.url === '/api/webhook-mutasi') {
+    let bodyData = '';
+    req.on('data', (chunk) => {
+      bodyData += chunk;
+    });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(bodyData);
+        const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+        if (!supabaseUrl || !serviceRoleKey) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Supabase credentials are missing.' }));
+          return;
+        }
+
+        const { createClient } = require('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+        let mutations = [];
+        if (Array.isArray(payload)) {
+          mutations = payload;
+        } else if (payload && Array.isArray(payload.data)) {
+          mutations = payload.data;
+        } else if (payload) {
+          mutations = [payload];
+        }
+
+        let processedCount = 0;
+        for (const item of mutations) {
+          const type = String(item.type || '').toUpperCase();
+          const amount = Number(item.amount || 0);
+
+          if (type === 'CR' || type === 'CREDIT' || type === 'IN') {
+            const { data: matchedOrders, error: fetchError } = await supabase
+              .from('orders')
+              .select('id, total_amount, payment_status')
+              .eq('payment_status', 'pending')
+              .eq('total_amount', amount);
+
+            if (fetchError) throw fetchError;
+
+            if (matchedOrders && matchedOrders.length > 0) {
+              const orderToUpdate = matchedOrders[0];
+              const { error: updateError } = await supabase
+                .from('orders')
+                .update({ payment_status: 'paid' })
+                .eq('id', orderToUpdate.id);
+
+              if (updateError) throw updateError;
+              processedCount++;
+              console.log(`Order ${orderToUpdate.id} marked PAID locally via webhook simulation (Amount: Rp ${amount})`);
+            }
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: `Processed ${processedCount} orders.` }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: err.message }));
+      }
+    });
   } else {
     res.writeHead(404);
     res.end();

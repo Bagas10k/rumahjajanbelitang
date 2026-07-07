@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { ProductCard } from './components/ProductCard';
 import { CartDrawer } from './components/CartDrawer';
@@ -25,6 +25,13 @@ function App() {
   // Reactive data from Zustand
   const products = useCartStore((state) => state.products);
   const currentUser = useCartStore((state) => state.currentUser);
+  const fetchProducts = useCartStore((state) => state.fetchProducts);
+  const fetchOrders = useCartStore((state) => state.fetchOrders);
+
+  useEffect(() => {
+    fetchProducts();
+    fetchOrders();
+  }, [fetchProducts, fetchOrders]);
 
   const handleDashboardToggle = () => {
     if (currentUser?.role === 'admin') {
