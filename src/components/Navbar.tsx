@@ -7,8 +7,8 @@ export interface NavbarProps {
   onLoginClick?: () => void;
   onDashboardToggle?: () => void;
   isAdminViewActive?: boolean;
-  activePage: 'catalog' | 'status';
-  onPageChange?: (page: 'catalog' | 'status') => void;
+  activePage: 'catalog' | 'status' | 'about';
+  onPageChange?: (page: 'catalog' | 'status' | 'about') => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -25,8 +25,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const isAdmin = currentUser?.role === 'admin';
 
+  const handleKategoriClick = () => {
+    onPageChange?.('catalog');
+    setTimeout(() => {
+      const el = document.getElementById('catalog');
+      el?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-gray-100 px-6 py-4">
+    <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-gray-100 px-6 py-4 no-print">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
         
         {/* Brand Logo & Name */}
@@ -60,11 +68,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="absolute bottom-0 left-0 w-full h-[2.5px] bg-[#e28743] rounded-full"></span>
               )}
             </li>
-            <li className="text-gray-400 hover:text-gray-600 transition-colors py-1 cursor-pointer">
+            <li 
+              onClick={handleKategoriClick}
+              className="text-gray-400 hover:text-gray-600 transition-colors py-1 cursor-pointer"
+            >
               Kategori
             </li>
-            <li className="text-gray-400 hover:text-gray-600 transition-colors py-1 cursor-pointer">
+            <li 
+              onClick={() => onPageChange?.('about')}
+              className={`relative py-1 cursor-pointer transition-colors ${!isAdminViewActive && activePage === 'about' ? 'text-[#2d2218] font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+            >
               Tentang Kami
+              {!isAdminViewActive && activePage === 'about' && (
+                <span className="absolute bottom-0 left-0 w-full h-[2.5px] bg-[#e28743] rounded-full"></span>
+              )}
             </li>
           </ul>
         </nav>

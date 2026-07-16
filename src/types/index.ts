@@ -51,3 +51,44 @@ export interface User {
   username: string;
   role: 'customer' | 'admin';
 }
+
+export interface FinancialTransaction {
+  id: string;
+  orderId: string | null;
+  type: 'income' | 'expense' | 'refund';
+  category: string; // 'product_sale' | 'shipping' | 'operational' | 'material' | 'salary' | 'other'
+  description: string;
+  amount: number;
+  paymentMethod: string;
+  referenceNumber: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface Expense {
+  id: string;
+  category: 'bahan_baku' | 'operasional' | 'gaji' | 'pengiriman' | 'lainnya';
+  description: string;
+  amount: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface DailySummary {
+  id: string;
+  date: string;
+  totalIncome: number;
+  totalExpense: number;
+  totalOrders: number;
+  totalItemsSold: number;
+  netProfit: number;
+}
+
+export interface ReceiptData {
+  order: Order;
+  storeName: string;
+  storeAddress: string;
+  storePhone: string;
+  printedAt: string;
+  printedBy: string;
+}

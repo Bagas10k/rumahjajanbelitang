@@ -32,11 +32,49 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. PENGATURAN KEAMANAN (Row Level Security - RLS)
+-- 3. TABEL FINANCIAL_TRANSACTIONS (Pencatatan Transaksi Keuangan)
+CREATE TABLE IF NOT EXISTS financial_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id VARCHAR REFERENCES orders(id) ON DELETE SET NULL,
+  type VARCHAR NOT NULL CHECK (type IN ('income', 'expense', 'refund')),
+  category VARCHAR NOT NULL,
+  description TEXT NOT NULL,
+  amount NUMERIC NOT NULL CHECK (amount >= 0),
+  payment_method VARCHAR NOT NULL DEFAULT 'cash',
+  reference_number VARCHAR DEFAULT '',
+  created_by VARCHAR NOT NULL DEFAULT 'system',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 4. TABEL EXPENSES (Pencatatan Pengeluaran Bisnis)
+CREATE TABLE IF NOT EXISTS expenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category VARCHAR NOT NULL CHECK (category IN ('bahan_baku', 'operasional', 'gaji', 'pengiriman', 'lainnya')),
+  description TEXT NOT NULL,
+  amount NUMERIC NOT NULL CHECK (amount >= 0),
+  created_by VARCHAR NOT NULL DEFAULT 'admin',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. TABEL DAILY_SUMMARY (Ringkasan Keuangan Harian)
+CREATE TABLE IF NOT EXISTS daily_summary (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE UNIQUE NOT NULL,
+  total_income NUMERIC NOT NULL DEFAULT 0,
+  total_expense NUMERIC NOT NULL DEFAULT 0,
+  total_orders INTEGER NOT NULL DEFAULT 0,
+  total_items_sold INTEGER NOT NULL DEFAULT 0,
+  net_profit NUMERIC NOT NULL DEFAULT 0
+);
+
+-- 6. PENGATURAN KEAMANAN (Row Level Security - RLS)
 -- Untuk kemudahan testing lokalan, kita nonaktifkan RLS terlebih dahulu.
 -- (Pada produksi asli, disarankan membuat kebijakan READ untuk publik dan WRITE untuk admin)
 ALTER TABLE products DISABLE ROW LEVEL SECURITY;
 ALTER TABLE orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE financial_transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses DISABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_summary DISABLE ROW LEVEL SECURITY;
 
 -- 4. INSERT DATA AWAL (Optional: Mengisi data katalog awal)
 INSERT INTO products (id, name, description, image_url, gallery, original_price, discount_price, stock, category, is_featured, variants)

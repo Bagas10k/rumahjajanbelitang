@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useCartStore } from '../store/useCartStore';
 import type { Order } from '../types';
-import { Search, Clock, Box, Truck, CheckCircle2, MapPin, User, Calendar, Wallet } from 'lucide-react';
+import { Search, Clock, Box, Truck, CheckCircle2, MapPin, User, Calendar, Wallet, Printer } from 'lucide-react';
+import { ReceiptPrinter } from './ReceiptPrinter';
 
 export const OrderStatusPage: React.FC = () => {
   const { orders } = useCartStore();
   const [searchId, setSearchId] = useState('');
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +65,7 @@ export const OrderStatusPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl w-full mx-auto px-6 py-8 flex-1 flex flex-col">
+    <div className="max-w-4xl w-full mx-auto px-6 py-8 flex-1 flex flex-col no-print">
       
       {/* Title */}
       <div className="text-center max-w-xl mx-auto mb-10">
@@ -108,7 +110,18 @@ export const OrderStatusPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-6">
             <div>
               <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">ID Invoice</span>
-              <h3 className="text-lg font-black text-[#7b2cbf]">{searchedOrder.id}</h3>
+              <div className="flex items-center gap-2 mt-1">
+                <h3 className="text-lg font-black text-[#7b2cbf]">{searchedOrder.id}</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsReceiptOpen(true)}
+                  className="px-3 py-1 bg-orange-50 hover:bg-orange-100 rounded-lg text-[#e28743] border border-orange-200 transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-[10px]"
+                  title="Cetak Resi"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak Resi</span>
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400 font-medium">Status Bayar:</span>
@@ -319,6 +332,14 @@ export const OrderStatusPage: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+      
+      {searchedOrder && (
+        <ReceiptPrinter 
+          order={searchedOrder} 
+          isOpen={isReceiptOpen} 
+          onClose={() => setIsReceiptOpen(false)} 
+        />
       )}
 
     </div>

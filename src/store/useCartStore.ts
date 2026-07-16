@@ -213,8 +213,18 @@ export const useCartStore = create<CartState>()(
         set({ currentUser: null });
       },
 
-      // Supabase Load Actions
+      // Helper to check if Supabase is fully configured
       fetchProducts: async () => {
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
+        if (!checkSupabase()) {
+          console.log('Using local products storage (Supabase not configured)');
+          return;
+        }
         try {
           const { data, error } = await supabase
             .from('products')
@@ -240,11 +250,21 @@ export const useCartStore = create<CartState>()(
             set({ products: mappedProducts });
           }
         } catch (err) {
-          console.error('Error fetching products from Supabase:', err);
+          console.warn('Failed to fetch products from Supabase, using local fallback:', err);
         }
       },
 
       fetchOrders: async () => {
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
+        if (!checkSupabase()) {
+          console.log('Using local orders storage (Supabase not configured)');
+          return;
+        }
         try {
           const { data, error } = await supabase
             .from('orders')
@@ -268,12 +288,18 @@ export const useCartStore = create<CartState>()(
             set({ orders: mappedOrders });
           }
         } catch (err) {
-          console.error('Error fetching orders from Supabase:', err);
+          console.warn('Failed to fetch orders from Supabase, using local fallback:', err);
         }
       },
 
       // Order Actions
       placeOrder: async (customer: CustomerDetails, paymentMethod: 'qris' | 'cod', customUniqueCode?: number) => {
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
         const cartItems = get().items;
         if (cartItems.length === 0) return null;
 
@@ -295,247 +321,332 @@ export const useCartStore = create<CartState>()(
           uniqueCode
         };
 
-        try {
-          // 1. Insert order into Supabase
-          const { error: orderError } = await supabase
-            .from('orders')
-            .insert([{
-              id: newOrder.id,
-              customer: newOrder.customer,
-              items: newOrder.items,
-              total_amount: newOrder.totalAmount,
-              payment_status: newOrder.paymentStatus,
-              payment_method: newOrder.paymentMethod,
-              delivery_status: newOrder.deliveryStatus,
-              unique_code: newOrder.uniqueCode,
-              created_at: newOrder.createdAt
-            }]);
-
-          if (orderError) throw orderError;
-
-          // 2. Reduce specific variant stock in Supabase
+        // Local stock reduction logic
+        const reduceLocalStock = () => {
           const products = get().products;
-          for (const item of cartItems) {
-            const product = products.find((p) => p.id === item.product.id);
-            if (product) {
-              const updatedVariants = product.variants.map((v) => {
+          const updatedProducts = products.map((p) => {
+            const item = cartItems.find((ci) => ci.product.id === p.id);
+            if (item) {
+              const updatedVariants = p.variants.map((v) => {
                 if (v.id === item.selectedVariant.id) {
                   return { ...v, stock: Math.max(0, v.stock - item.quantity) };
                 }
                 return v;
               });
               const totalStock = updatedVariants.reduce((sum, v) => sum + v.stock, 0);
-
-              const { error: prodError } = await supabase
-                .from('products')
-                .update({
-                  variants: updatedVariants,
-                  stock: totalStock
-                })
-                .eq('id', product.id);
-
-              if (prodError) throw prodError;
+              return { ...p, variants: updatedVariants, stock: totalStock };
             }
-          }
-
-          // 3. Update local Zustand state
-          set({
-            orders: [newOrder, ...get().orders],
+            return p;
           });
+          set({ products: updatedProducts });
+        };
 
-          await get().fetchProducts();
-          get().clearCart();
-          return newOrder;
-        } catch (err) {
-          console.error('Error placing order in Supabase:', err);
-          alert('Gagal mengirim pesanan ke database. Silakan coba kembali.');
-          return null;
+        if (checkSupabase()) {
+          try {
+            // 1. Insert order into Supabase
+            const { error: orderError } = await supabase
+              .from('orders')
+              .insert([{
+                id: newOrder.id,
+                customer: newOrder.customer,
+                items: newOrder.items,
+                total_amount: newOrder.totalAmount,
+                payment_status: newOrder.paymentStatus,
+                payment_method: newOrder.paymentMethod,
+                delivery_status: newOrder.deliveryStatus,
+                unique_code: newOrder.uniqueCode,
+                created_at: newOrder.createdAt
+              }]);
+
+            if (orderError) throw orderError;
+
+            // 2. Reduce specific variant stock in Supabase
+            const products = get().products;
+            for (const item of cartItems) {
+              const product = products.find((p) => p.id === item.product.id);
+              if (product) {
+                const updatedVariants = product.variants.map((v) => {
+                  if (v.id === item.selectedVariant.id) {
+                    return { ...v, stock: Math.max(0, v.stock - item.quantity) };
+                  }
+                  return v;
+                });
+                const totalStock = updatedVariants.reduce((sum, v) => sum + v.stock, 0);
+
+                const { error: prodError } = await supabase
+                  .from('products')
+                  .update({
+                    variants: updatedVariants,
+                    stock: totalStock
+                  })
+                  .eq('id', product.id);
+
+                if (prodError) throw prodError;
+              }
+            }
+          } catch (err) {
+            console.warn('Error placing order in Supabase, using local fallback:', err);
+          }
         }
+
+        // Always run local state updates so UX is instantaneous and works offline
+        reduceLocalStock();
+        set({
+          orders: [newOrder, ...get().orders],
+        });
+        get().clearCart();
+        return newOrder;
       },
 
       updateOrderStatus: async (orderId: string, status: 'pending' | 'paid' | 'failed') => {
-        try {
-          const { error } = await supabase
-            .from('orders')
-            .update({ payment_status: status })
-            .eq('id', orderId);
-          
-          if (error) throw error;
-          
-          set({
-            orders: get().orders.map((order) =>
-              order.id === orderId ? { ...order, paymentStatus: status } : order
-            ),
-          });
-        } catch (err) {
-          console.error('Error updating order status in Supabase:', err);
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
+        // Update local state instantly
+        set({
+          orders: get().orders.map((order) =>
+            order.id === orderId ? { ...order, paymentStatus: status } : order
+          ),
+        });
+
+        if (checkSupabase()) {
+          try {
+            const { error } = await supabase
+              .from('orders')
+              .update({ payment_status: status })
+              .eq('id', orderId);
+            
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error updating order status in Supabase:', err);
+          }
         }
       },
 
       updateDeliveryStatus: async (orderId: string, status: 'packing' | 'shipping' | 'completed') => {
-        try {
-          const { error } = await supabase
-            .from('orders')
-            .update({ delivery_status: status })
-            .eq('id', orderId);
-          
-          if (error) throw error;
-          
-          set({
-            orders: get().orders.map((order) =>
-              order.id === orderId ? { ...order, deliveryStatus: status } : order
-            ),
-          });
-        } catch (err) {
-          console.error('Error updating delivery status in Supabase:', err);
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
+        // Update local state instantly
+        set({
+          orders: get().orders.map((order) =>
+            order.id === orderId ? { ...order, deliveryStatus: status } : order
+          ),
+        });
+
+        if (checkSupabase()) {
+          try {
+            const { error } = await supabase
+              .from('orders')
+              .update({ delivery_status: status })
+              .eq('id', orderId);
+            
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error updating delivery status in Supabase:', err);
+          }
         }
       },
 
       // Admin Actions: Add New Product
       addProduct: async (product: Product) => {
-        try {
-          const { error } = await supabase
-            .from('products')
-            .insert([{
-              id: product.id,
-              name: product.name,
-              description: product.description,
-              image_url: product.imageUrl,
-              gallery: product.gallery,
-              original_price: product.originalPrice,
-              discount_price: product.discountPrice,
-              stock: product.stock,
-              category: product.category,
-              is_featured: product.isFeatured,
-              variants: product.variants
-            }]);
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
 
-          if (error) throw error;
+        // Update local state instantly
+        set({
+          products: [product, ...get().products],
+        });
 
-          set({
-            products: [product, ...get().products],
-          });
-        } catch (err) {
-          console.error('Error adding product in Supabase:', err);
+        if (checkSupabase()) {
+          try {
+            const { error } = await supabase
+              .from('products')
+              .insert([{
+                id: product.id,
+                name: product.name,
+                description: product.description,
+                image_url: product.imageUrl,
+                gallery: product.gallery,
+                original_price: product.originalPrice,
+                discount_price: product.discountPrice,
+                stock: product.stock,
+                category: product.category,
+                is_featured: product.isFeatured,
+                variants: product.variants
+              }]);
+
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error adding product in Supabase:', err);
+          }
         }
       },
 
       // Admin Actions: Delete Product
       deleteProduct: async (productId: string) => {
-        try {
-          const { error } = await supabase
-            .from('products')
-            .delete()
-            .eq('id', productId);
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
 
-          if (error) throw error;
+        // Update local state instantly
+        set({
+          products: get().products.filter((p) => p.id !== productId),
+        });
 
-          set({
-            products: get().products.filter((p) => p.id !== productId),
-          });
-        } catch (err) {
-          console.error('Error deleting product in Supabase:', err);
+        if (checkSupabase()) {
+          try {
+            const { error } = await supabase
+              .from('products')
+              .delete()
+              .eq('id', productId);
+
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error deleting product from Supabase:', err);
+          }
         }
       },
 
       // Admin Actions: Update Product
       updateProduct: async (productId: string, updatedFields: Partial<Product>) => {
-        try {
-          const dbFields: any = {};
-          if (updatedFields.name !== undefined) dbFields.name = updatedFields.name;
-          if (updatedFields.description !== undefined) dbFields.description = updatedFields.description;
-          if (updatedFields.imageUrl !== undefined) dbFields.image_url = updatedFields.imageUrl;
-          if (updatedFields.gallery !== undefined) dbFields.gallery = updatedFields.gallery;
-          if (updatedFields.originalPrice !== undefined) dbFields.original_price = updatedFields.originalPrice;
-          if (updatedFields.discountPrice !== undefined) dbFields.discount_price = updatedFields.discountPrice;
-          if (updatedFields.stock !== undefined) dbFields.stock = updatedFields.stock;
-          if (updatedFields.category !== undefined) dbFields.category = updatedFields.category;
-          if (updatedFields.variants !== undefined) dbFields.variants = updatedFields.variants;
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
 
-          const { error } = await supabase
-            .from('products')
-            .update(dbFields)
-            .eq('id', productId);
+        // Update local state instantly
+        set({
+          products: get().products.map((p) =>
+            p.id === productId ? { ...p, ...updatedFields } : p
+          ),
+        });
 
-          if (error) throw error;
+        if (checkSupabase()) {
+          try {
+            const dbFields: any = {};
+            if (updatedFields.name !== undefined) dbFields.name = updatedFields.name;
+            if (updatedFields.description !== undefined) dbFields.description = updatedFields.description;
+            if (updatedFields.imageUrl !== undefined) dbFields.image_url = updatedFields.imageUrl;
+            if (updatedFields.gallery !== undefined) dbFields.gallery = updatedFields.gallery;
+            if (updatedFields.originalPrice !== undefined) dbFields.original_price = updatedFields.originalPrice;
+            if (updatedFields.discountPrice !== undefined) dbFields.discount_price = updatedFields.discountPrice;
+            if (updatedFields.stock !== undefined) dbFields.stock = updatedFields.stock;
+            if (updatedFields.category !== undefined) dbFields.category = updatedFields.category;
+            if (updatedFields.variants !== undefined) dbFields.variants = updatedFields.variants;
 
-          set({
-            products: get().products.map((p) =>
-              p.id === productId ? { ...p, ...updatedFields } : p
-            ),
-          });
-        } catch (err) {
-          console.error('Error updating product in Supabase:', err);
+            const { error } = await supabase
+              .from('products')
+              .update(dbFields)
+              .eq('id', productId);
+
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error updating product in Supabase:', err);
+          }
         }
       },
 
       // Admin Actions: Toggle Featured Customizer
       toggleFeatured: async (productId: string) => {
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
         const product = get().products.find((p) => p.id === productId);
         if (!product) return;
-        try {
-          const nextFeatured = !product.isFeatured;
-          const { error } = await supabase
-            .from('products')
-            .update({ is_featured: nextFeatured })
-            .eq('id', productId);
+        const nextFeatured = !product.isFeatured;
 
-          if (error) throw error;
+        // Update local state instantly
+        set({
+          products: get().products.map((p) =>
+            p.id === productId ? { ...p, isFeatured: nextFeatured } : p
+          ),
+        });
 
-          set({
-            products: get().products.map((p) =>
-              p.id === productId ? { ...p, isFeatured: nextFeatured } : p
-            ),
-          });
-        } catch (err) {
-          console.error('Error toggling featured in Supabase:', err);
+        if (checkSupabase()) {
+          try {
+            const { error } = await supabase
+              .from('products')
+              .update({ is_featured: nextFeatured })
+              .eq('id', productId);
+
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error toggling featured in Supabase:', err);
+          }
         }
       },
 
       // Admin Actions: Edit Specific Variant Stock
       updateVariantStock: async (productId: string, variantId: string, stock: number) => {
+        const checkSupabase = () => {
+          const url = import.meta.env.VITE_SUPABASE_URL || '';
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+          return url && !url.includes('your-project.supabase.co') && key && key !== 'your-anon-key-here';
+        };
+
         const product = get().products.find((p) => p.id === productId);
         if (!product) return;
-        try {
-          const updatedVariants = product.variants.map((v) =>
-            v.id === variantId ? { ...v, stock: Math.max(0, stock) } : v
-          );
-          const totalStock = updatedVariants.reduce((sum, v) => sum + v.stock, 0);
+        const updatedVariants = product.variants.map((v) =>
+          v.id === variantId ? { ...v, stock: Math.max(0, stock) } : v
+        );
+        const totalStock = updatedVariants.reduce((sum, v) => sum + v.stock, 0);
 
-          const { error } = await supabase
-            .from('products')
-            .update({
-              variants: updatedVariants,
-              stock: totalStock
-            })
-            .eq('id', productId);
+        // Update local state instantly
+        set({
+          products: get().products.map((p) => {
+            if (p.id === productId) {
+              return {
+                ...p,
+                variants: updatedVariants,
+                stock: totalStock,
+              };
+            }
+            return p;
+          }),
+        });
 
-          if (error) throw error;
+        if (checkSupabase()) {
+          try {
+            const { error } = await supabase
+              .from('products')
+              .update({
+                variants: updatedVariants,
+                stock: totalStock
+              })
+              .eq('id', productId);
 
-          set({
-            products: get().products.map((p) => {
-              if (p.id === productId) {
-                return {
-                  ...p,
-                  variants: updatedVariants,
-                  stock: totalStock,
-                };
-              }
-              return p;
-            }),
-          });
-        } catch (err) {
-          console.error('Error updating variant stock in Supabase:', err);
+            if (error) throw error;
+          } catch (err) {
+            console.warn('Error updating variant stock in Supabase:', err);
+          }
         }
       }
     }),
     {
       name: 'krupuk-belitang-store',
-      // We only want to persist items (cart) and currentUser (auth) in localStorage
-      // as products and orders are loaded fresh from Supabase.
+      // Persist items, currentUser, products, and orders in localStorage
+      // so the app remains fully functional and preserves state in local mode
       partialize: (state) => ({
         items: state.items,
-        currentUser: state.currentUser
+        currentUser: state.currentUser,
+        products: state.products,
+        orders: state.orders
       }) as any
     }
   )
